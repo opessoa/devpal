@@ -1,13 +1,30 @@
-
 import { GoogleGenAI } from "@google/genai";
+import { invoke } from '@tauri-apps/api/core';
 
-const API_KEY = process.env.API_KEY;
-
-if (!API_KEY) {
-  console.warn("Gemini API key not found. AI features will be disabled.");
+// Função para buscar a chave de API do backend
+async function getApiKey(): Promise<string | null> {
+  try {
+    // Certifique-se que o nome do comando é o mesmo que no backend Rust
+    const apiKey = await invoke<string | null>('get_api_key');
+    if (!apiKey) {
+      console.error("A variável de ambiente API_KEY não está definida no backend.");
+      return null;
+    }
+    return apiKey;
+  } catch (error) {
+    console.error("Erro ao buscar a chave de API do backend:", error);
+    return null;
+  }
 }
 
-const ai = new GoogleGenAI({ apiKey: API_KEY! });
+let ai: GoogleGenAI | null = null;
+const apiKey = await getApiKey();
+
+if (!apiKey) {
+  console.warn("Gemini API key not found. AI features will be disabled.");
+} else {
+  ai = new GoogleGenAI({ apiKey: apiKey });
+}
 
 const getBasePrompt = (scriptType: 'pre-request' | 'post-request'): string => {
     return `
@@ -36,7 +53,7 @@ Generate ONLY the JavaScript code to accomplish the user's goal. Do not wrap it 
 
 
 export const generateScriptWithGemini = async (prompt: string, scriptType: 'pre-request' | 'post-request'): Promise<string> => {
-  if (!API_KEY) {
+  if (!ai) {
     return Promise.reject(new Error("API Key for Gemini is not configured."));
   }
 
@@ -47,7 +64,7 @@ export const generateScriptWithGemini = async (prompt: string, scriptType: 'pre-
         model: 'gemini-2.5-pro',
         contents: fullPrompt,
     });
-    return response.text.trim();
+    return response.text ? response.text.trim() : '';
   } catch (error) {
     console.error("Error calling Gemini API:", error);
     throw new Error("Failed to generate script with AI.");

@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Collection, Folder, ApiRequest } from '../types';
-import { FolderIcon, FileIcon, ChevronRightIcon, FolderPlusIcon, DocumentPlusIcon } from './icons';
+import { FolderIcon, ChevronRightIcon, FolderPlusIcon, DocumentPlusIcon } from './icons';
 
 type TreeItem = Collection | Folder | ApiRequest;
 
@@ -9,7 +9,10 @@ interface TreeViewProps {
   onSelect: (item: ApiRequest | Folder | Collection) => void;
   selectedId: string | null;
   onAddFolder: (parentId: string) => void;
-  onAddRequest: (parentId: string) => void;
+  onAddRequest: (parentId:string) => void;
+  onContextMenu: (event: React.MouseEvent, item: TreeItem) => void;
+  renamingId: string | null;
+  onRename: (id: string, newName: string) => void;
 }
 
 interface NodeProps {
@@ -19,6 +22,9 @@ interface NodeProps {
   level: number;
   onAddFolder: (parentId: string) => void;
   onAddRequest: (parentId: string) => void;
+  onContextMenu: (event: React.MouseEvent, item: TreeItem) => void;
+  renamingId: string | null;
+  onRename: (id: string, newName: string) => void;
 }
 
 const getHttpMethodClass = (method: string) => {
@@ -32,14 +38,22 @@ const getHttpMethodClass = (method: string) => {
     }
 }
 
-const Node: React.FC<NodeProps> = ({ item, onSelect, selectedId, level, onAddFolder, onAddRequest }) => {
+const Node: React.FC<NodeProps> = ({ item, onSelect, selectedId, level, onAddFolder, onAddRequest, onContextMenu, renamingId, onRename }) => {
   const [isOpen, setIsOpen] = useState(true);
   const [isHovered, setIsHovered] = useState(false);
+  const [renameValue, setRenameValue] = useState(item.name);
   const isSelected = selectedId === item.id;
+  const isRenaming = renamingId === item.id;
   const hasChildren = 'items' in item && item.items.length > 0;
-  // FIX: Check for 'items' property to identify folder-like items (Collection, Folder)
-  // as the Collection type does not have a 'type' property.
   const isFolder = 'items' in item;
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isRenaming && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isRenaming]);
 
   const handleToggle = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -50,6 +64,24 @@ const Node: React.FC<NodeProps> = ({ item, onSelect, selectedId, level, onAddFol
       onSelect(item as ApiRequest | Folder | Collection);
   }
 
+  const handleRenameSubmit = () => {
+    if (renameValue.trim() && renameValue !== item.name) {
+      onRename(item.id, renameValue.trim());
+    } else {
+      setRenameValue(item.name); // Revert if empty or unchanged
+      onRename(item.id, item.name); // This just cancels the rename state
+    }
+  };
+
+  const handleRenameKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleRenameSubmit();
+    } else if (e.key === 'Escape') {
+      setRenameValue(item.name);
+      onRename(item.id, item.name);
+    }
+  };
+
   const basePadding = 0.75; // rem
   const paddingLeft = `${basePadding + level * 1.25}rem`;
 
@@ -57,6 +89,7 @@ const Node: React.FC<NodeProps> = ({ item, onSelect, selectedId, level, onAddFol
     <div>
       <div
         onClick={handleSelect}
+        onContextMenu={(e) => onContextMenu(e, item)}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
         style={{ paddingLeft }}
@@ -71,9 +104,23 @@ const Node: React.FC<NodeProps> = ({ item, onSelect, selectedId, level, onAddFol
         {!hasChildren && <div className="w-4" />}
         
         {isFolder ? <FolderIcon className="w-5 h-5 text-yellow-500" /> : <span className={`text-xs font-bold w-10 text-right pr-2 ${getHttpMethodClass((item as ApiRequest).method)}`}>{(item as ApiRequest).method}</span>}
-        <span className="truncate flex-1">{item.name}</span>
+        
+        {isRenaming ? (
+          <input
+            ref={inputRef}
+            type="text"
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onBlur={handleRenameSubmit}
+            onKeyDown={handleRenameKeyDown}
+            onClick={(e) => e.stopPropagation()}
+            className="flex-1 bg-gray-900 text-white outline-none ring-1 ring-blue-500 rounded px-1 -my-0.5"
+          />
+        ) : (
+          <span className="truncate flex-1">{item.name}</span>
+        )}
 
-        {isHovered && isFolder && (
+        {isHovered && !isRenaming && isFolder && (
           <div className="flex items-center space-x-1 ml-auto">
             <button
               onClick={(e) => { e.stopPropagation(); onAddRequest(item.id); }}
@@ -95,7 +142,7 @@ const Node: React.FC<NodeProps> = ({ item, onSelect, selectedId, level, onAddFol
       {isOpen && hasChildren && (
         <div>
           {(item as Collection | Folder).items.map((child) => (
-            <Node key={child.id} item={child} onSelect={onSelect} selectedId={selectedId} level={level + 1} onAddFolder={onAddFolder} onAddRequest={onAddRequest} />
+            <Node key={child.id} item={child} onSelect={onSelect} selectedId={selectedId} level={level + 1} onAddFolder={onAddFolder} onAddRequest={onAddRequest} onContextMenu={onContextMenu} renamingId={renamingId} onRename={onRename} />
           ))}
         </div>
       )}
@@ -104,11 +151,11 @@ const Node: React.FC<NodeProps> = ({ item, onSelect, selectedId, level, onAddFol
 };
 
 
-const TreeView: React.FC<TreeViewProps> = ({ collections, onSelect, selectedId, onAddFolder, onAddRequest }) => {
+const TreeView: React.FC<TreeViewProps> = ({ collections, onSelect, selectedId, onAddFolder, onAddRequest, onContextMenu, renamingId, onRename }) => {
   return (
     <div className="p-2 space-y-1 text-sm">
       {collections.map((collection) => (
-        <Node key={collection.id} item={collection} onSelect={onSelect} selectedId={selectedId} level={0} onAddFolder={onAddFolder} onAddRequest={onAddRequest} />
+        <Node key={collection.id} item={collection} onSelect={onSelect} selectedId={selectedId} level={0} onAddFolder={onAddFolder} onAddRequest={onAddRequest} onContextMenu={onContextMenu} renamingId={renamingId} onRename={onRename} />
       ))}
     </div>
   );

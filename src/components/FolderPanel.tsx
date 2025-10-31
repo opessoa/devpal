@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Folder, Collection, Variable, Script } from '../types';
+import { Folder, Collection, Variable } from '../types';
 import VariableEditor from './VariableEditor';
 import ScriptEditor from './ScriptEditor';
 import { FolderIcon } from './icons';

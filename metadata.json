@@ -1,5 +1,0 @@
-{
-  "name": "DevPal API Client",
-  "description": "An elegant, file-based API client similar to Postman, designed for developers who love version control. Organize requests in a hierarchy, manage variables, run pre-request and post-request scripts, and even generate scripts with AI.",
-  "requestFramePermissions": []
-}

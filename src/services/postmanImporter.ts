@@ -4,7 +4,6 @@ import {
   ApiRequest,
   Variable,
   Script,
-  Header,
   Body,
   HttpMethod,
 } from '../types';
@@ -43,10 +42,18 @@ interface PostmanHeader {
   disabled?: boolean;
 }
 
+// FIX: Expanded PostmanBody interface to support various body types for import.
 interface PostmanBody {
   mode: 'raw' | 'urlencoded' | 'formdata' | 'file' | 'graphql';
   raw?: string;
-  // Other body types are ignored for now
+  urlencoded?: { key: string; value: string; disabled?: boolean }[];
+  formdata?: { key: string; value: string; disabled?: boolean; type: 'text' | 'file'; src?: any }[];
+  graphql?: { query: string; variables?: string };
+  options?: {
+      raw?: {
+          language?: 'json' | 'text' | 'xml' | 'html' | 'javascript';
+      }
+  }
 }
 
 interface PostmanRequest {
@@ -125,6 +132,50 @@ const transformPostmanItem = (item: PostmanItem): Folder | ApiRequest => {
 
   // It's a Request
   const req = item.request!;
+  
+  // FIX: Greatly improved body parsing to handle various Postman body types.
+  const body: Body = { mode: 'none' };
+  if (req.body) {
+      switch (req.body.mode) {
+          case 'raw':
+              body.mode = 'raw';
+              body.raw = req.body.raw || '';
+              body.rawLanguage = req.body.options?.raw?.language || 'text';
+              break;
+          case 'urlencoded':
+              body.mode = 'x-www-form-urlencoded';
+              body.urlEncoded = req.body.urlencoded?.map(p => ({
+                  id: `kv_${Date.now()}_${Math.random()}`,
+                  key: p.key,
+                  value: p.value,
+                  enabled: !p.disabled
+              })) || [];
+              break;
+          case 'formdata':
+              body.mode = 'form-data';
+              // Note: File uploads are not supported, so we only import text fields.
+              body.formData = req.body.formdata?.filter(p => p.type === 'text').map(p => ({
+                  id: `kv_${Date.now()}_${Math.random()}`,
+                  key: p.key,
+                  value: p.value,
+                  enabled: !p.disabled
+              })) || [];
+              break;
+          case 'graphql':
+              body.mode = 'graphql';
+              body.graphql = {
+                  query: req.body.graphql?.query || '',
+                  variables: req.body.graphql?.variables || ''
+              };
+              break;
+          case 'file':
+              body.mode = 'binary';
+              break;
+          default:
+              body.mode = 'none';
+      }
+  }
+
   return {
     id: `req_${Date.now()}_${Math.random()}`,
     name: item.name,
@@ -137,10 +188,7 @@ const transformPostmanItem = (item: PostmanItem): Folder | ApiRequest => {
       value: h.value,
       enabled: !h.disabled,
     })) : [],
-    body: {
-      mode: req.body?.mode === 'raw' ? 'raw' : 'none',
-      raw: req.body?.mode === 'raw' ? req.body.raw : undefined,
-    },
+    body: body,
     scripts: toDevPalScripts(item.event),
   };
 };

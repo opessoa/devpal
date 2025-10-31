@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { generateScriptWithGemini } from '../services/geminiService';
 import { SparklesIcon, ErrorIcon } from './icons';
 import CodeEditor from './CodeEditor';
@@ -110,7 +110,7 @@ const ScriptEditor: React.FC<ScriptEditorProps> = ({ value, onChange, scriptType
             {Array.from({ length: lineCount }, (_, i) => i + 1).map(lineNumber => (
                 <div key={lineNumber} className="relative h-6 flex justify-end items-center">
                     {error && error.line === lineNumber && (
-                        <ErrorIcon className="w-4 h-4 text-red-500 absolute -left-1" title={`Line ${error.line}: ${displayedErrorMessage}`} />
+                        <ErrorIcon className="w-4 h-4 text-red-500 absolute -left-1" />
                     )}
                     {lineNumber}
                 </div>

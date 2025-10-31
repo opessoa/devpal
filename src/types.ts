@@ -29,6 +29,7 @@ export interface GraphQLBody {
 export interface Body {
   mode: 'none' | 'raw' | 'form-data' | 'x-www-form-urlencoded' | 'binary' | 'graphql';
   raw?: string;
+  rawLanguage?: 'json' | 'text' | 'xml' | 'html' | 'javascript';
   formData?: Variable[];
   urlEncoded?: Variable[];
   graphql?: GraphQLBody;
@@ -87,4 +88,11 @@ export interface ConsoleLog {
   timestamp: string;
   message: any[];
   errorDetails?: ScriptErrorDetails;
+}
+
+export interface AppSettings {
+  corsProxy: {
+    enabled: boolean;
+    url: string;
+  };
 }

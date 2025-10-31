@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ApiRequest, HttpMethod, Header, ResponseData, Body, Variable } from '../types';
+import { ApiRequest, HttpMethod, Body, Variable } from '../types';
 import ScriptEditor from './ScriptEditor';
 import { SendIcon } from './icons';
 import VariableEditor from './VariableEditor';
@@ -244,7 +244,10 @@ const RequestPanel: React.FC<RequestPanelProps> = ({ request, onUpdateRequest, o
   const handleBodyModeChange = (mode: Body['mode']) => {
     const newBody: Body = { mode };
 
-    if (mode === 'raw') newBody.raw = localRequest.body.raw || '';
+    if (mode === 'raw') {
+        newBody.raw = localRequest.body.raw || '';
+        newBody.rawLanguage = localRequest.body.rawLanguage || 'text';
+    }
     if (mode === 'form-data') newBody.formData = localRequest.body.formData || [];
     if (mode === 'x-www-form-urlencoded') newBody.urlEncoded = localRequest.body.urlEncoded || [];
     if (mode === 'graphql') newBody.graphql = localRequest.body.graphql || { query: '', variables: '' };
@@ -256,7 +259,14 @@ const RequestPanel: React.FC<RequestPanelProps> = ({ request, onUpdateRequest, o
 
   const handleRawBodyChange = (value: string) => {
     // FIX: Correctly set the body mode to 'raw' when raw content is changed. This prevents an invalid state where the body object could have a 'raw' property but a different 'mode' like 'form-data'.
-    const updated = {...localRequest, body: {...localRequest.body, mode: 'raw', raw: value}};
+    const updated = {...localRequest, body: {...localRequest.body, mode: 'raw' as const, raw: value}};
+    setLocalRequest(updated);
+    onUpdateRequest(updated);
+  }
+
+  const handleRawLanguageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const lang = e.target.value as Body['rawLanguage'];
+    const updated = {...localRequest, body: {...localRequest.body, rawLanguage: lang }};
     setLocalRequest(updated);
     onUpdateRequest(updated);
   }
@@ -273,7 +283,7 @@ const RequestPanel: React.FC<RequestPanelProps> = ({ request, onUpdateRequest, o
   const handleGraphQLChange = (field: 'query' | 'variables', value: string) => {
     const newGraphqlBody = { ...(localRequest.body.graphql || {}), [field]: value };
     // FIX: Correctly set the body mode to 'graphql' when GraphQL content is changed. This prevents an invalid state where the body object could have a 'graphql' property but a different 'mode'.
-    const updated = {...localRequest, body: {...localRequest.body, mode: 'graphql', graphql: newGraphqlBody }};
+    const updated = {...localRequest, body: {...localRequest.body, mode: 'graphql' as const, graphql: newGraphqlBody }};
     setLocalRequest(updated);
     onUpdateRequest(updated);
   }
@@ -384,16 +394,31 @@ const RequestPanel: React.FC<RequestPanelProps> = ({ request, onUpdateRequest, o
                 )}
                  {activeTab === 'body' && (
                     <div className="h-full flex flex-col">
-                        <div className="flex-shrink-0 flex items-center space-x-1 p-1 bg-gray-900/50 rounded-t-md">
-                           {(['none', 'form-data', 'x-www-form-urlencoded', 'raw', 'graphql', 'binary'] as Body['mode'][]).map(mode => (
-                                <button 
-                                    key={mode} 
-                                    onClick={() => handleBodyModeChange(mode)}
-                                    className={`px-3 py-1 text-xs rounded-md capitalize ${localRequest.body.mode === mode ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-700'}`}
+                        <div className="flex-shrink-0 flex items-center justify-between p-1 bg-gray-900/50 rounded-t-md">
+                           <div className="flex items-center space-x-1">
+                               {(['none', 'form-data', 'x-www-form-urlencoded', 'raw', 'graphql', 'binary'] as Body['mode'][]).map(mode => (
+                                    <button 
+                                        key={mode} 
+                                        onClick={() => handleBodyModeChange(mode)}
+                                        className={`px-3 py-1 text-xs rounded-md capitalize ${localRequest.body.mode === mode ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-700'}`}
+                                    >
+                                        {mode.replace(/_/g, ' ')}
+                                    </button>
+                                ))}
+                            </div>
+                            { localRequest.body.mode === 'raw' && (
+                                <select
+                                    value={localRequest.body.rawLanguage || 'text'}
+                                    onChange={handleRawLanguageChange}
+                                    className="bg-gray-800 border border-gray-700 rounded-md px-2 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
                                 >
-                                    {mode.replace(/_/g, ' ')}
-                                </button>
-                            ))}
+                                    <option value="text">Text</option>
+                                    <option value="json">JSON</option>
+                                    <option value="javascript">JavaScript</option>
+                                    <option value="html">HTML</option>
+                                    <option value="xml">XML</option>
+                                </select>
+                            )}
                         </div>
                         <div className="flex-grow bg-gray-900 rounded-b-md">
                             { localRequest.body.mode === 'none' && (
@@ -403,7 +428,7 @@ const RequestPanel: React.FC<RequestPanelProps> = ({ request, onUpdateRequest, o
                                 <CodeEditor
                                     value={localRequest.body.raw || ''}
                                     onChange={handleRawBodyChange}
-                                    language={isJson(localRequest.body.raw) ? 'json' : 'text'}
+                                    language={localRequest.body.rawLanguage || 'text'}
                                     placeholder='{ "key": "value" }'
                                     className="h-full"
                                 />

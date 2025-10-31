@@ -1,4 +1,4 @@
-import { Project, ApiRequest, Folder, Collection, ResponseData, ConsoleLog, Script, Body, HttpMethod, Header } from '../types';
+import { Project, ApiRequest, Folder, Collection, ResponseData, ConsoleLog, Script, AppSettings } from '../types';
 
 /**
  * Recursively resolves variables in a string like `{{var}}`.
@@ -51,7 +51,8 @@ const buildPmContext = (
     findPath: (targetId: string, p: Project) => (Folder | ApiRequest | Collection)[] | null,
     initialRuntimeVariables: Map<string, any>,
     logSink: (log: Omit<ConsoleLog, 'timestamp'>) => void,
-    pathString: string
+    pathString: string,
+    settings?: AppSettings
 ) => {
     const pmContext = Object.create(null);
 
@@ -122,10 +123,30 @@ const buildPmContext = (
     
     // 4. Point the unified resolver to the accessor's `get` method.
     unifiedResolver.get = variablesAccessor.get;
+    
+    const currentItem = path ? path[path.length - 1] : null;
 
     pmContext.info = { getPath: () => pathString };
-    pmContext.request = { headers: { add: () => {} } };
     pmContext.response = {};
+
+    if (currentItem && 'type' in currentItem && currentItem.type === 'request') {
+        const req = currentItem as ApiRequest;
+        pmContext.request = {
+            url: req.url,
+            method: req.method,
+            body: {
+                mode: req.body.mode,
+                options: {
+                    raw: {
+                        language: req.body.rawLanguage || 'text'
+                    }
+                }
+            }
+        };
+    } else {
+        pmContext.request = {};
+    }
+
     pmContext.console = {
         log: (...args: any[]) => logSink({ type: 'log', message: args }),
         warn: (...args: any[]) => logSink({ type: 'warn', message: args }),
@@ -196,7 +217,7 @@ const buildPmContext = (
                     requestOptions.method = req.method || 'GET';
                     if (req.header) {
                         const headersArray = Array.isArray(req.header) ? req.header : Object.entries(req.header).map(([key, value]) => ({ key, value: String(value) }));
-                        requestOptions.headers = headersArray.map(h => ({
+                        requestOptions.headers = headersArray.map((h: { key: string; value: string; disabled?: boolean }) => ({
                             id: `h_sendReq_${Math.random()}`, key: h.key, value: h.value, enabled: !h.disabled
                         }));
                     }
@@ -209,8 +230,12 @@ const buildPmContext = (
                     requestOptions, currentVariables, { request: { headers: { _headers: new Headers() } } }
                 );
                 
+                const finalUrl = settings?.corsProxy.enabled && settings?.corsProxy.url
+                    ? `${settings.corsProxy.url.replace(/\/$/, '')}/${resolvedUrl}`
+                    : resolvedUrl;
+                
                 const startTime = Date.now();
-                const fetchRes = await fetch(resolvedUrl, {
+                const fetchRes = await fetch(finalUrl, {
                     method: requestOptions.method, headers: resolvedHeaders,
                     body: requestOptions.method !== 'GET' && requestOptions.method !== 'HEAD' ? resolvedBody : undefined,
                 });
@@ -295,7 +320,8 @@ export const getScopedVariables = (
         findPath,
         runtimeVariables,
         mockLogSink,
-        pathString
+        pathString,
+        undefined
     );
     
     // pm.variables.toObject() returns a fully resolved object of all variables.
@@ -311,19 +337,18 @@ export const runPreRequestScripts = async (
     findPath: (targetId: string, p: Project) => (Folder | ApiRequest | Collection)[] | null,
     logSink: (log: Omit<ConsoleLog, 'timestamp'>) => void,
     runtimeVariables: Map<string, any>,
-    initialRequestHeaders?: Headers
+    initialRequestHeaders?: Headers,
+    settings?: AppSettings
 ): Promise<{ pmContext: any, variablesMap: Map<string, any> }> => {
     const path = findPath(itemId, project);
     const pathString = path ? path.map(p => p.name).join('/') : '';
-    const { pmContext } = buildPmContext(project, itemId, findPath, runtimeVariables, logSink, pathString);
+    const { pmContext } = buildPmContext(project, itemId, findPath, runtimeVariables, logSink, pathString, settings);
 
     if (initialRequestHeaders) {
-        pmContext.request = {
-            headers: {
+        pmContext.request.headers = {
                 _headers: new Headers(initialRequestHeaders),
                 add: function({key, value}: {key: string, value: string}) { this._headers.append(key, value); }
-            }
-        };
+            };
     }
     
     const scriptsToRun: { script: Script, ownerName: string }[] = [];
